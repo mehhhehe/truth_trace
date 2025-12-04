@@ -25,7 +25,7 @@ workflow proposed in the specification:
    and other interactions.
 3. **Feature extraction** — Generate text embeddings for the news posts
    using a transformer model (e.g. BERT) and derive simple user‑level
-   features (e.g. degree statistics)【126310739344574†L180-L190】.
+   features (e.g. degree statistics).
 4. **GNN model** — Apply a Graph Attention Network to aggregate
    neighbour information and produce graph‑level outputs (fake vs.
    real).
@@ -98,9 +98,9 @@ The script will automatically download the selected UPFD splits (train,
 val, test) if they are not already present.  It trains two models:
 
 * **Baseline (text‑only) classifier** — a logistic regression model on
-  top of the root node embeddings【126310739344574†L246-L252】.
+  top of the root node embeddings.
 * **GAT classifier** — a two‑layer Graph Attention Network followed by
-  graph pooling and a linear classifier【126310739344574†L125-L141】.
+  graph pooling and a linear classifier.
 
 Model checkpoints are saved to `model_dir`.  Hyperparameters (hidden
 dimension, number of attention heads, epochs, batch size) are all
