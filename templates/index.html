@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TruthTrace Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='d3.v7.min.js') }}"></script>
+</head>
+<body>
+  <header>
+    <h1>TruthTrace Propagation Analysis</h1>
+  </header>
+  <div class="container">
+    <div>
+      <label for="news-select">Select News Item:</label>
+      <select id="news-select">
+        {% for nid in news_ids %}
+        <option value="{{ nid }}">{{ nid }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="prediction-panel">
+      <div class="card" id="baseline-card">
+        <h3>Baseline (Text‑Only)</h3>
+        <p id="baseline-prob">Probability: N/A</p>
+      </div>
+      <div class="card" id="gat-card">
+        <h3>GAT (Propagation)</h3>
+        <p id="gat-prob">Probability: N/A</p>
+      </div>
+    </div>
+    <div id="graph"></div>
+  </div>
+
+  <script>
+    const newsSelect = document.getElementById('news-select');
+    const baselineProbEl = document.getElementById('baseline-prob');
+    const gatProbEl = document.getElementById('gat-prob');
+    const graphEl = document.getElementById('graph');
+
+    function updatePredictions(data) {
+      if (data.baseline !== null && data.baseline !== undefined) {
+        baselineProbEl.textContent = `Probability: ${ (data.baseline * 100).toFixed(2) }%`;
+      } else {
+        baselineProbEl.textContent = 'Probability: N/A';
+      }
+      if (data.gat !== null && data.gat !== undefined) {
+        gatProbEl.textContent = `Probability: ${ (data.gat * 100).toFixed(2) }%`;
+      } else {
+        gatProbEl.textContent = 'Probability: N/A';
+      }
+    }
+
+    function renderGraph(graphData) {
+      graphEl.innerHTML = '';
+      const width = graphEl.clientWidth;
+      const height = graphEl.clientHeight;
+      const svg = d3.select(graphEl).append('svg')
+        .attr('width', width)
+        .attr('height', height);
+
+      const color = d3.scaleOrdinal()
+        .domain(['news', 'user'])
+        .range(['#0077b6', '#48cae4']);
+
+      const simulation = d3.forceSimulation(graphData.nodes)
+        .force('link', d3.forceLink(graphData.links).id(d => d.id).distance(80))
+        .force('charge', d3.forceManyBody().strength(-150))
+        .force('center', d3.forceCenter(width / 2, height / 2));
+
+      const link = svg.append('g')
+        .attr('class', 'links')
+        .selectAll('line')
+        .data(graphData.links)
+        .enter().append('line')
+        .attr('stroke', '#999')
+        .attr('stroke-opacity', 0.6);
+
+      const node = svg.append('g')
+        .attr('class', 'nodes')
+        .selectAll('circle')
+        .data(graphData.nodes)
+        .enter().append('circle')
+        .attr('r', d => d.group === 'news' ? 8 : 5)
+        .attr('fill', d => color(d.group))
+        .call(d3.drag()
+          .on('start', dragstarted)
+          .on('drag', dragged)
+          .on('end', dragended));
+
+      const tooltip = d3.select(graphEl).append('div')
+        .attr('class', 'tooltip');
+
+      node.on('mouseover', (event, d) => {
+        tooltip.style('opacity', 1)
+          .text(d.group === 'news' ? 'News' : 'User');
+      }).on('mousemove', event => {
+        tooltip.style('left', (event.offsetX + 10) + 'px')
+          .style('top', (event.offsetY + 10) + 'px');
+      }).on('mouseout', () => {
+        tooltip.style('opacity', 0);
+      });
+
+      simulation.on('tick', () => {
+        link
+          .attr('x1', d => d.source.x)
+          .attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x)
+          .attr('y2', d => d.target.y);
+        node
+          .attr('cx', d => d.x)
+          .attr('cy', d => d.y);
+      });
+
+      function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      }
+
+      function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+      }
+
+      function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+      }
+    }
+
+    function loadNews(id) {
+      fetch(`/predict/${id}`)
+        .then(resp => resp.json())
+        .then(data => {
+          updatePredictions(data);
+        });
+      fetch(`/graph_json/${id}`)
+        .then(resp => resp.json())
+        .then(graphData => {
+          renderGraph(graphData);
+        });
+    }
+
+    newsSelect.addEventListener('change', () => {
+      loadNews(newsSelect.value);
+    });
+
+    // Load the first news cascade on page load
+    if (newsSelect.value) {
+      loadNews(newsSelect.value);
+    }
+  </script>
+</body>
+</html>
