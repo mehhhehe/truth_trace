@@ -113,8 +113,8 @@ variables to indicate where the dataset is cached, which subset and
 feature type to use, and where the models are stored:
 
 ```bash
-export TRUTHTRACE_ROOT=./data/upfd
-export TRUTHTRACE_DATASET=politifact
+export TRUTHTRACE_ROOT=./data
+export TRUTHTRACE_DATASET=gossipcop
 export TRUTHTRACE_FEATURE=bert
 export TRUTHTRACE_MODEL_DIR=models
 python app.py

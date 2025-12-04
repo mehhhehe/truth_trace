@@ -24,8 +24,8 @@ def create_app() -> Flask:
     app = Flask(__name__)
 
     # Configuration: root directory, dataset name, feature type and model directory
-    root = os.environ.get("TRUTHTRACE_ROOT", "./data/upfd")
-    dataset_name = os.environ.get("TRUTHTRACE_DATASET", "politifact")
+    root = os.environ.get("TRUTHTRACE_ROOT", "./data")
+    dataset_name = os.environ.get("TRUTHTRACE_DATASET", "gossipcop")
     feature_type = os.environ.get("TRUTHTRACE_FEATURE", "bert")
     model_dir = os.environ.get("TRUTHTRACE_MODEL_DIR", "models")
     hidden_dim = int(os.environ.get("TRUTHTRACE_HIDDEN_DIM", 64))
