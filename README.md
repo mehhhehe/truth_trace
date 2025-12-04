@@ -50,18 +50,9 @@ folder structure.
 
 ### 1. Download from OpenDataLab
 
-1. Go to the UPFD page on OpenDataLab  
-   (search for **“UPFD”** on [OpenDataLab](https://opendatalab.com) and open
-   the dataset page).
+1. Go to the UPFD page on OpenDataLab: https://opendatalab.com/OpenDataLab/UPFD/tree/main/raw.
 2. Log in / create an account if needed.
 3. Download the archive(s) containing the UPFD data.  
-   Typically you will see separate archives or folders for:
-   - `politifact`
-   - `gossipcop`
-   and possibly different feature variants (e.g. BERT/content/profile).
-
-You only need the splits and feature files that correspond to the
-configuration you plan to use (e.g. Politifact + BERT features).
 
 ### 2. Create the local folder structure
 
