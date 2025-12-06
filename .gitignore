@@ -13,3 +13,4 @@ runs/
 *.pth
 *.pt
 *.pkl
+report.tex
