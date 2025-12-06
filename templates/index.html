@@ -6,11 +6,116 @@
   <title>TruthTrace Dashboard</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script src="{{ url_for('static', filename='d3.v7.min.js') }}"></script>
+
+  <style>
+    .layout-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      margin-top: 1.25rem;
+      align-items: flex-start;
+    }
+
+    .news-details,
+    .node-details {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 0.75rem 1rem;
+      background: #fafafa;
+      font-size: 0.95rem;
+    }
+
+    .news-details {
+      flex: 1 1 260px;
+    }
+
+    .graph-panel {
+      flex: 2 1 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .news-details h3,
+    .node-details h3 {
+      margin-top: 0;
+      margin-bottom: 0.5rem;
+      font-size: 1.05rem;
+    }
+
+    .news-meta-row {
+      margin: 0.25rem 0;
+    }
+
+    .news-text-box {
+      margin-top: 0.5rem;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      padding: 0.5rem;
+      max-height: 220px;
+      overflow-y: auto;
+      background: #fff;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+    }
+
+    #graph {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fff;
+      width: 100%;
+      height: 500px;
+      position: relative;
+    }
+
+    .node-label {
+      font-size: 10px;
+      pointer-events: none;
+    }
+
+    .tooltip {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.75);
+      color: #fff;
+      padding: 4px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    .zoom-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .zoom-controls button {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .node-details {
+      font-size: 0.9rem;
+    }
+
+    .node-details pre {
+      font-size: 0.8rem;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      padding: 0.5rem;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+  </style>
 </head>
 <body>
   <header>
     <h1>TruthTrace Propagation Analysis</h1>
   </header>
+
   <div class="container">
     <div>
       <label for="news-select">Select News Item:</label>
@@ -20,9 +125,10 @@
         {% endfor %}
       </select>
     </div>
+
     <div class="prediction-panel">
       <div class="card" id="baseline-card">
-        <h3>Baseline (Text‑Only)</h3>
+        <h3>Baseline (Text-Only)</h3>
         <p id="baseline-prob">Probability: N/A</p>
       </div>
       <div class="card" id="gat-card">
@@ -30,76 +136,239 @@
         <p id="gat-prob">Probability: N/A</p>
       </div>
     </div>
-    <div id="graph"></div>
+
+    <div class="layout-row">
+      <!-- News details -->
+      <div class="news-details">
+        <h3>News Item Details</h3>
+        <p class="news-meta-row">
+          <strong>ID:</strong> <span id="news-id">N/A</span>
+        </p>
+        <p class="news-meta-row">
+          <strong>Label:</strong> <span id="news-label">N/A</span>
+        </p>
+        <!--
+        <div class="news-text-box" id="news-text">
+          <em>Select a news item to view its details.</em>
+        </div>
+        -->
+      </div>
+
+      <!-- Graph + node details -->
+      <div class="graph-panel">
+        <div class="zoom-controls">
+          <h3 style="margin-right:auto">Propagation Graph</h3>
+          <button id="zoom-in">+</button>
+          <button id="zoom-out">−</button>
+          <button id="zoom-reset">Reset</button>
+        </div>
+        <div id="graph"></div>
+
+        <div class="node-details">
+          <h3>Node Details</h3>
+          <p class="news-meta-row" id="node-id">ID: N/A</p>
+          <p class="news-meta-row" id="node-type">Type: N/A</p>
+          <p class="news-meta-row" id="node-degree">Degree: N/A</p>
+          <p class="news-meta-row" id="node-hint">
+            <em>Click a node in the graph to inspect it.</em>
+          </p>
+          <p class="news-meta-row">
+            <strong>Features (first 8 dims):</strong>
+          </p>
+          <pre id="node-features">(no node selected)</pre>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
+    let currentGraphData = null;
+    let zoomBehavior = null;
+    let svgRef = null;
+    let containerGRef = null;
+
     const newsSelect = document.getElementById('news-select');
     const baselineProbEl = document.getElementById('baseline-prob');
     const gatProbEl = document.getElementById('gat-prob');
     const graphEl = document.getElementById('graph');
 
+    const newsIdEl = document.getElementById('news-id');
+    const newsLabelEl = document.getElementById('news-label');
+    const newsTextEl = document.getElementById('news-text'); // may be null (box commented out)
+
+    const nodeIdEl = document.getElementById('node-id');
+    const nodeTypeEl = document.getElementById('node-type');
+    const nodeDegreeEl = document.getElementById('node-degree');
+    const nodeHintEl = document.getElementById('node-hint');
+    const nodeFeaturesEl = document.getElementById('node-features');
+
+    const zoomInBtn = document.getElementById('zoom-in');
+    const zoomOutBtn = document.getElementById('zoom-out');
+    const zoomResetBtn = document.getElementById('zoom-reset');
+
     function updatePredictions(data) {
       if (data.baseline !== null && data.baseline !== undefined) {
-        baselineProbEl.textContent = `Probability: ${ (data.baseline * 100).toFixed(2) }%`;
+        baselineProbEl.textContent = `Probability: ${(data.baseline * 100).toFixed(2)}%`;
       } else {
         baselineProbEl.textContent = 'Probability: N/A';
       }
       if (data.gat !== null && data.gat !== undefined) {
-        gatProbEl.textContent = `Probability: ${ (data.gat * 100).toFixed(2) }%`;
+        gatProbEl.textContent = `Probability: ${(data.gat * 100).toFixed(2)}%`;
       } else {
         gatProbEl.textContent = 'Probability: N/A';
       }
     }
 
+    function updateNewsPanel(newsId, graphData) {
+      newsIdEl.textContent = newsId;
+
+      if (graphData.label_name !== undefined && graphData.label !== undefined) {
+        newsLabelEl.textContent = `${graphData.label_name} (${graphData.label})`;
+      } else if (graphData.label !== undefined) {
+        newsLabelEl.textContent = `Label: ${graphData.label}`;
+      } else {
+        newsLabelEl.textContent = 'N/A';
+      }
+
+      // Only touch newsTextEl if the box actually exists
+      if (!newsTextEl) return;
+
+      if (graphData.text) {
+        newsTextEl.textContent = graphData.text;
+      } else {
+        newsTextEl.innerHTML =
+          '<em>No text content is attached to this UPFD graph. ' +
+          'To display news text, you need to attach it explicitly in preprocessing.</em>';
+      }
+    }
+
+    function resetNodeDetails() {
+      nodeIdEl.textContent = 'ID: N/A';
+      nodeTypeEl.textContent = 'Type: N/A';
+      nodeDegreeEl.textContent = 'Degree: N/A';
+      nodeHintEl.innerHTML = '<em>Click a node in the graph to inspect it.</em>';
+      nodeFeaturesEl.textContent = '(no node selected)';
+    }
+
     function renderGraph(graphData) {
       graphEl.innerHTML = '';
-      const width = graphEl.clientWidth;
-      const height = graphEl.clientHeight;
+      resetNodeDetails();
+
+      const width = graphEl.clientWidth || 800;
+      const height = graphEl.clientHeight || 500;
+
       const svg = d3.select(graphEl).append('svg')
         .attr('width', width)
         .attr('height', height);
 
-      const color = d3.scaleOrdinal()
-        .domain(['news', 'user'])
-        .range(['#0077b6', '#48cae4']);
+      const containerG = svg.append('g')
+        .attr('class', 'graph-inner');
+
+      svgRef = svg;
+      containerGRef = containerG;
+
+      // Degree map
+      const degreeMap = {};
+      graphData.nodes.forEach(n => { degreeMap[n.id] = 0; });
+      graphData.links.forEach(l => {
+        degreeMap[l.source] = (degreeMap[l.source] || 0) + 1;
+        degreeMap[l.target] = (degreeMap[l.target] || 0) + 1;
+      });
+
+      const rootId = "0";
+      const nodeFeatures = graphData.node_features || {};
+
+      // New colour scale: root = hot pink, users = Turbo based on user–user similarity
+      const colourForNode = buildUserSimilarityColourScale(
+        graphData.nodes,
+        nodeFeatures,
+        rootId
+      );
+
+      // Radius: root bigger, users based on degree
+      function radiusForNode(d) {
+        if (d.id === rootId) return 22;
+        const deg = degreeMap[d.id] || 0;
+        return Math.max(5, Math.min(12, 5 + Math.sqrt(deg)));
+      }
 
       const simulation = d3.forceSimulation(graphData.nodes)
         .force('link', d3.forceLink(graphData.links).id(d => d.id).distance(80))
         .force('charge', d3.forceManyBody().strength(-150))
-        .force('center', d3.forceCenter(width / 2, height / 2));
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .alphaDecay(0.04);
 
-      const link = svg.append('g')
+      const link = containerG.append('g')
         .attr('class', 'links')
         .selectAll('line')
         .data(graphData.links)
-        .enter().append('line')
+        .enter()
+        .append('line')
         .attr('stroke', '#999')
         .attr('stroke-opacity', 0.6);
 
-      const node = svg.append('g')
+      const node = containerG.append('g')
         .attr('class', 'nodes')
-        .selectAll('circle')
+        .selectAll('g')
         .data(graphData.nodes)
-        .enter().append('circle')
-        .attr('r', d => d.group === 'news' ? 8 : 5)
-        .attr('fill', d => color(d.group))
-        .call(d3.drag()
-          .on('start', dragstarted)
-          .on('drag', dragged)
-          .on('end', dragended));
+        .enter()
+        .append('g')
+        .call(
+          d3.drag()
+            .on('start', dragstarted)
+            .on('drag', dragged)
+            .on('end', dragended)
+        );
 
+      node.append('circle')
+        .attr('r', d => radiusForNode(d))
+        .attr('fill', d => colourForNode(d))
+        .attr('stroke', '#111')
+        .attr('stroke-width', 1.2);
+
+      node.append('text')
+        .attr('class', 'node-label')
+        .attr('text-anchor', 'middle')
+        .attr('dy', -10)
+        .text(d => d.id);
+
+      // Tooltip
       const tooltip = d3.select(graphEl).append('div')
         .attr('class', 'tooltip');
 
       node.on('mouseover', (event, d) => {
-        tooltip.style('opacity', 1)
-          .text(d.group === 'news' ? 'News' : 'User');
+        tooltip
+          .style('opacity', 1)
+          .text(d.group === 'news' ? `News node (${d.id})` : `User node (${d.id})`);
       }).on('mousemove', event => {
-        tooltip.style('left', (event.offsetX + 10) + 'px')
+        tooltip
+          .style('left', (event.offsetX + 10) + 'px')
           .style('top', (event.offsetY + 10) + 'px');
       }).on('mouseout', () => {
         tooltip.style('opacity', 0);
+      });
+
+      // Click -> node details + features
+      node.on('click', (event, d) => {
+        if (!currentGraphData || !currentGraphData.node_features) {
+          nodeFeaturesEl.textContent = '(no features available)';
+          return;
+        }
+
+        const deg = degreeMap[d.id] || 0;
+        const feat = currentGraphData.node_features[d.id];
+
+        nodeIdEl.textContent = `ID: ${d.id}`;
+        nodeTypeEl.textContent = `Type: ${d.group === 'news' ? 'Source news node' : 'User node'}`;
+        nodeDegreeEl.textContent = `Degree: ${deg}`;
+        nodeHintEl.textContent = '';
+
+        if (feat && feat.length) {
+          const formatted = feat.map(v => v.toFixed(3)).join(', ');
+          nodeFeaturesEl.textContent = formatted;
+        } else {
+          nodeFeaturesEl.textContent = '(no features available)';
+        }
       });
 
       simulation.on('tick', () => {
@@ -108,10 +377,18 @@
           .attr('y1', d => d.source.y)
           .attr('x2', d => d.target.x)
           .attr('y2', d => d.target.y);
-        node
-          .attr('cx', d => d.x)
-          .attr('cy', d => d.y);
+
+        node.attr('transform', d => `translate(${d.x},${d.y})`);
       });
+
+      // Zoom & pan with buttons
+      zoomBehavior = d3.zoom()
+        .scaleExtent([0.3, 4])
+        .on('zoom', (event) => {
+          containerG.attr('transform', event.transform);
+        });
+
+      svg.call(zoomBehavior);
 
       function dragstarted(event, d) {
         if (!event.active) simulation.alphaTarget(0.3).restart();
@@ -134,23 +411,106 @@
     function loadNews(id) {
       fetch(`/predict/${id}`)
         .then(resp => resp.json())
-        .then(data => {
-          updatePredictions(data);
-        });
+        .then(updatePredictions);
+
       fetch(`/graph_json/${id}`)
         .then(resp => resp.json())
         .then(graphData => {
+          currentGraphData = graphData;
           renderGraph(graphData);
+          updateNewsPanel(id, graphData);
         });
     }
+
+    // Zoom button handlers
+    function zoomBy(factor) {
+      if (!svgRef || !zoomBehavior) return;
+      svgRef.transition().duration(200).call(zoomBehavior.scaleBy, factor);
+    }
+
+    function zoomReset() {
+      if (!svgRef || !zoomBehavior) return;
+      svgRef.transition().duration(200).call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+
+    zoomInBtn.addEventListener('click', () => zoomBy(1.2));
+    zoomOutBtn.addEventListener('click', () => zoomBy(0.8));
+    zoomResetBtn.addEventListener('click', () => zoomReset());
 
     newsSelect.addEventListener('change', () => {
       loadNews(newsSelect.value);
     });
 
-    // Load the first news cascade on page load
+    // Initial load
     if (newsSelect.value) {
       loadNews(newsSelect.value);
+    }
+
+    // ---- user–user similarity colour scale ----
+    function buildUserSimilarityColourScale(nodes, nodeFeatures, rootId) {
+      const userNodes = nodes.filter(n => {
+        if (n.id === rootId) return false;
+        const feat = nodeFeatures[n.id];
+        return Array.isArray(feat) && feat.length > 0;
+      });
+
+      // Fallback: no usable features -> fixed bright palette
+      if (userNodes.length === 0) {
+        const palette = ['#ff0055','#ff6d00','#ffba08','#3a86ff','#8338ec','#ff006e','#00f5d4'];
+        return n => n.id === rootId ? '#ff0055'
+                                    : palette[parseInt(n.id, 10) % palette.length || 0];
+      }
+
+      const D = Math.min(16, nodeFeatures[userNodes[0].id].length);
+
+      // Centroid of user features
+      const centroid = new Array(D).fill(0);
+      userNodes.forEach(n => {
+        const feat = nodeFeatures[n.id];
+        for (let i = 0; i < D; i++) {
+          centroid[i] += feat[i];
+        }
+      });
+      for (let i = 0; i < D; i++) {
+        centroid[i] /= userNodes.length;
+      }
+
+      function cosineSim(a, b) {
+        let dot = 0, na = 0, nb = 0;
+        for (let i = 0; i < D; i++) {
+          const va = a[i];
+          const vb = b[i];
+          dot += va * vb;
+          na += va * va;
+          nb += vb * vb;
+        }
+        if (na === 0 || nb === 0) return 0;
+        return dot / (Math.sqrt(na) * Math.sqrt(nb));
+      }
+
+      const simMap = new Map();
+      let minSim = Infinity;
+      let maxSim = -Infinity;
+
+      userNodes.forEach(n => {
+        const feat = nodeFeatures[n.id];
+        const sim = cosineSim(feat, centroid);
+        simMap.set(n.id, sim);
+        if (sim < minSim) minSim = sim;
+        if (sim > maxSim) maxSim = sim;
+      });
+
+      if (maxSim === minSim) maxSim = minSim + 1e-6;
+
+      const colourScale = d3.scaleSequential(d3.interpolateTurbo)
+        .domain([minSim, maxSim]);
+
+      return n => {
+        if (n.id === rootId) return '#ff0055';  // hot pink root
+        const sim = simMap.get(n.id);
+        if (sim == null) return '#999999';
+        return colourScale(sim);
+      };
     }
   </script>
 </body>

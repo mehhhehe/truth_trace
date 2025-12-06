@@ -1,94 +1,260 @@
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Propagation Graph – {{ news_id }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="{{ url_for('static', filename='d3.v7.min.js') }}"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Propagation Graph – {{ news_id }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='d3.v7.min.js') }}"></script>
+  <style>
+    .graph-container {
+      width: 100%;
+      height: 600px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: #ffffff;
+      box-sizing: border-box;
+    }
+    .header {
+      text-align: center;
+      padding: 1rem 0;
+    }
+    .node-label {
+      font-size: 10px;
+      pointer-events: none;
+    }
+  </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Propagation Graph: {{ news_id }}</h1>
-        <p>Interactive cascade visualisation</p>
-    </div>
-    <div class="content">
-        <div id="graph" class="graph-container"></div>
-    </div>
-    <script>
-      const graphData = {{ graph_data | tojson | safe }};
-      // Draw the graph on load
-      drawGraph(graphData);
-      function drawGraph(graphData) {
-        const container = document.getElementById('graph');
-        const width = container.clientWidth;
-        const height = container.clientHeight;
-        const svg = d3.select(container).append('svg')
-          .attr('width', width)
-          .attr('height', height);
-        const nodes = graphData.nodes.map(id => ({ id: id }));
-        const links = graphData.edges.map(e => ({ source: e[0], target: e[1] }));
-        const degreeMap = {};
-        nodes.forEach(n => { degreeMap[n.id] = 0; });
-        links.forEach(l => {
-          degreeMap[l.source] += 1;
-          degreeMap[l.target] += 1;
-        });
-        const color = d3.scaleOrdinal()
-          .domain(['root','other'])
-          .range(['#1565c0', '#43a047']);
-        const radiusScale = d3.scaleLinear()
-          .domain([0, d3.max(Object.values(degreeMap)) || 1])
-          .range([6, 20]);
-        const simulation = d3.forceSimulation(nodes)
-          .force('link', d3.forceLink(links).id(d => d.id).distance(80))
-          .force('charge', d3.forceManyBody().strength(-160))
-          .force('center', d3.forceCenter(width/2, height/2));
-        const link = svg.append('g')
-          .attr('stroke', '#999')
-          .attr('stroke-opacity', 0.6)
-          .selectAll('line')
-          .data(links)
-          .join('line')
-          .attr('stroke-width', 1.5);
-        const node = svg.append('g')
-          .attr('stroke', '#fff')
-          .attr('stroke-width', 1.5)
-          .selectAll('circle')
-          .data(nodes)
-          .join('circle')
-          .attr('r', d => radiusScale(degreeMap[d.id]))
-          .attr('fill', d => color(d.id === '0' ? 'root' : 'other'))
-          .call(d3.drag()
+  <div class="header">
+    <h1>Propagation Graph: {{ news_id }}</h1>
+    <p>
+      Root node is large and hot pink. User node colours encode similarity to the
+      average user feature vector (user–user similarity in feature space).
+    </p>
+  </div>
+
+  <div class="content">
+    <div id="graph" class="graph-container"></div>
+  </div>
+
+  <script>
+    const newsId = "{{ news_id }}";
+
+    // Get graph data from the JSON endpoint (no Jinja | filters here).
+    fetch(`/graph_json/${newsId}`)
+      .then(resp => resp.json())
+      .then(data => {
+        if (data.error) {
+          console.error(data.error);
+          return;
+        }
+        drawGraph(data);
+      })
+      .catch(err => console.error("Failed to load graph data:", err));
+
+    function drawGraph(graphData) {
+      const container = document.getElementById('graph');
+      const width = container.clientWidth || 800;
+      const height = container.clientHeight || 600;
+
+      const svg = d3.select(container)
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height);
+
+      // graphData.nodes: [{id: "0", group: "news"/"user"}, ...]
+      const nodes = (graphData.nodes || []).map((d, idx) => ({
+        id: String(d.id),
+        group: d.group || (String(d.id) === "0" ? "news" : "user"),
+        index: idx
+      }));
+
+      // graphData.links: [{source: "0", target: "1"}, ...]
+      const links = (graphData.links || []).map(e => ({
+        source: String(e.source),
+        target: String(e.target),
+      }));
+
+      // Degree map for sizing
+      const degreeMap = {};
+      nodes.forEach(n => { degreeMap[n.id] = 0; });
+      links.forEach(l => {
+        degreeMap[l.source] = (degreeMap[l.source] || 0) + 1;
+        degreeMap[l.target] = (degreeMap[l.target] || 0) + 1;
+      });
+
+      // Node features: dict { "0": [..], "1": [..], ... } from /graph_json
+      const nodeFeatures = graphData.node_features || {};
+      const rootId = "0";
+
+      // Build colour scale based on user–user similarity
+      const colourForNode = buildUserSimilarityColourScale(nodes, nodeFeatures, rootId);
+
+      // Radius: root big, users by sqrt(degree)
+      function radiusForNode(d) {
+        if (d.id === rootId) return 22;
+        const deg = degreeMap[d.id] || 0;
+        return Math.max(5, Math.min(12, 5 + Math.sqrt(deg)));
+      }
+
+      // Force simulation
+      const simulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(links).id(d => d.id).distance(80))
+        .force('charge', d3.forceManyBody().strength(-180))
+        .force('center', d3.forceCenter(width / 2, height / 2));
+
+      // Links
+      const link = svg.append('g')
+        .attr('stroke', '#bbbbbb')
+        .attr('stroke-opacity', 0.6)
+        .selectAll('line')
+        .data(links)
+        .join('line')
+        .attr('stroke-width', 1.2);
+
+      // Nodes (group for circle + label)
+      const node = svg.append('g')
+        .attr('class', 'nodes')
+        .selectAll('g')
+        .data(nodes)
+        .join('g')
+        .call(
+          d3.drag()
             .on('start', dragstarted)
             .on('drag', dragged)
-            .on('end', dragended));
-        node.append('title').text(d => d.id);
-        simulation.on('tick', () => {
-          link
-            .attr('x1', d => d.source.x)
-            .attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x)
-            .attr('y2', d => d.target.y);
-          node
-            .attr('cx', d => d.x)
-            .attr('cy', d => d.y);
+            .on('end', dragended)
+        );
+
+      node.append('circle')
+        .attr('r', d => radiusForNode(d))
+        .attr('fill', d => colourForNode(d))
+        .attr('stroke', '#111')
+        .attr('stroke-width', 1.2);
+
+      node.append('text')
+        .attr('class', 'node-label')
+        .attr('text-anchor', 'middle')
+        .attr('dy', -10)
+        .text(d => d.id);
+
+      node.append('title')
+        .text(d => d.id === rootId ? `News root (id=${d.id})` : `User node (id=${d.id})`);
+
+      simulation.on('tick', () => {
+        link
+          .attr('x1', d => d.source.x)
+          .attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x)
+          .attr('y2', d => d.target.y);
+
+        node.attr('transform', d => `translate(${d.x},${d.y})`);
+      });
+
+      // Zoom + pan
+      const zoom = d3.zoom()
+        .scaleExtent([0.3, 4])
+        .on('zoom', (event) => {
+          svg.select('.nodes').attr('transform', event.transform);
+          svg.selectAll('line').attr('transform', event.transform);
         });
-        function dragstarted(event) {
-          if (!event.active) simulation.alphaTarget(0.3).restart();
-          event.subject.fx = event.subject.x;
-          event.subject.fy = event.subject.y;
-        }
-        function dragged(event) {
-          event.subject.fx = event.x;
-          event.subject.fy = event.y;
-        }
-        function dragended(event) {
-          if (!event.active) simulation.alphaTarget(0);
-          event.subject.fx = null;
-          event.subject.fy = null;
-        }
+
+      svg.call(zoom);
+
+      function dragstarted(event) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        event.subject.fx = event.subject.x;
+        event.subject.fy = event.subject.y;
       }
-    </script>
+
+      function dragged(event) {
+        event.subject.fx = event.x;
+        event.subject.fy = event.y;
+      }
+
+      function dragended(event) {
+        if (!event.active) simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+      }
+    }
+
+    // Build colour scale based on user–user similarity:
+    // - root: fixed hot pink
+    // - users: similarity to centroid of user feature vectors (bright Turbo colormap)
+    function buildUserSimilarityColourScale(nodes, nodeFeatures, rootId) {
+      // Collect user nodes with valid features
+      const userNodes = nodes.filter(n => {
+        if (n.id === rootId) return false;
+        const feat = nodeFeatures[n.id];
+        return Array.isArray(feat) && feat.length > 0;
+      });
+
+      // If no usable features, just give bright, distinct colours per node
+      if (userNodes.length === 0) {
+        const palette = ['#ff0055', '#ff6d00', '#ffba08', '#3a86ff', '#8338ec', '#ff006e', '#00f5d4'];
+        return n => n.id === rootId ? '#ff0055' : palette[n.index % palette.length];
+      }
+
+      const D = Math.min(128, nodeFeatures[userNodes[0].id].length);
+
+      // Compute centroid of user feature vectors
+      const centroid = new Array(D).fill(0);
+      userNodes.forEach(n => {
+        const feat = nodeFeatures[n.id];
+        for (let i = 0; i < D; i++) {
+          centroid[i] += feat[i];
+        }
+      });
+      for (let i = 0; i < D; i++) {
+        centroid[i] /= userNodes.length;
+      }
+
+      function cosineSim(a, b) {
+        let dot = 0, na = 0, nb = 0;
+        for (let i = 0; i < D; i++) {
+          const va = a[i];
+          const vb = b[i];
+          dot += va * vb;
+          na += va * va;
+          nb += vb * vb;
+        }
+        if (na === 0 || nb === 0) return 0;
+        return dot / (Math.sqrt(na) * Math.sqrt(nb));
+      }
+
+      // Compute similarity to centroid for each user node
+      const simMap = new Map();
+      let minSim = Infinity;
+      let maxSim = -Infinity;
+
+      userNodes.forEach(n => {
+        const feat = nodeFeatures[n.id];
+        const sim = cosineSim(feat, centroid);
+        simMap.set(n.id, sim);
+        if (sim < minSim) minSim = sim;
+        if (sim > maxSim) maxSim = sim;
+      });
+      if (maxSim === minSim) {
+        maxSim = minSim + 1e-6;
+      }
+
+      const colourScale = d3.scaleSequential(d3.interpolateTurbo)
+        .domain([minSim, maxSim]);
+
+      return n => {
+        if (n.id === rootId) {
+          return '#ff0055';  // hot pink root
+        }
+        const sim = simMap.get(n.id);
+        if (sim == null) {
+          return '#999999';  // fallback if no similarity value
+        }
+        return colourScale(sim);
+      };
+    }
+  </script>
 </body>
 </html>
