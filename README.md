@@ -63,5 +63,8 @@ truthtrace_full/
     gossipcop/
       raw/
         ... all GossipCop UPFD files here ...
+
+'''
+
 ### 3. Clone the repo
 Once you have cloned the repo and installed the requirements (will almost definitely require UNIX/Linux/WSL since some of the packages are not Windows-compatible), run train.py. Once the models have trained, you can run the flask app for the (local) interface.
