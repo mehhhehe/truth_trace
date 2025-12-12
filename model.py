@@ -5,12 +5,12 @@ This module defines two models:
 
 1. **BaselineClassifier** — a simple text‑only classifier that
    operates on BERT embeddings of news articles.  It uses scikit‑learn's
-   logistic regression to predict fake vs. real labels【126310739344574†L246-L252】.
+   logistic regression to predict fake vs. real labels.
 
 2. **GATClassifier** — a graph neural network model based on the
    Graph Attention Network (GAT) architecture.  It processes
    heterogenous graphs of news and user nodes and outputs
-   probabilities of misinformation for each graph【126310739344574†L125-L141】.
+   probabilities of misinformation for each graph.
 
 Both models expose a `.fit()` method for training and a `.predict_proba()`
 method for obtaining probabilities on new examples.
@@ -18,7 +18,7 @@ method for obtaining probabilities on new examples.
 
 from __future__ import annotations
 
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -36,7 +36,7 @@ class BaselineClassifier:
 
     This class wraps a scikit‑learn logistic regression model.  It
     expects input arrays of shape (n_samples, embedding_dim) and
-    produces probabilities for the positive class (fake news)【126310739344574†L246-L252】.
+    produces probabilities for the positive class (fake news).
     """
 
     def __init__(self, max_iter: int = 1000) -> None:
@@ -63,7 +63,7 @@ class GATClassifier(nn.Module):
 
     The model uses two GAT layers with multi‑head attention, followed by
     global mean pooling to aggregate node embeddings and a final linear
-    layer for binary classification【126310739344574†L125-L141】.
+    layer for binary classification.
     """
 
     def __init__(self, input_dim: int, hidden_dim: int = 64, num_heads: int = 4) -> None:
