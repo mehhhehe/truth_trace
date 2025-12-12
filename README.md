@@ -1,7 +1,7 @@
 # TruthTrace Full Version (GAT on Full Propagation Trees)
 
 This repository contains a complete implementation of **TruthTrace** for the
-“full-batch” setting.
+“full-batch” setting (we experimented with neighbourhood sampling but the results were terrible).
 
 ## Overview
 
