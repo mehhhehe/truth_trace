@@ -1,11 +1,7 @@
 # TruthTrace Full Version (GAT on Full Propagation Trees)
 
 This repository contains a complete implementation of **TruthTrace** for the
-“full-batch” setting. It follows the high-level workflow described in the
-project specification and implements all five stages: input parsing,
-graph construction, feature extraction, GAT modelling, and classification
-with thresholding. A separate neighbour-sampling implementation is provided
-in the `truthtrace_neighbor` directory.
+“full-batch” setting.
 
 ## Overview
 
@@ -21,10 +17,10 @@ benchmark design (Dou et al., 2021).
 High-level workflow:
 
 1. **Input** — Load a collection of news items and their associated
-   propagation structures from the UPFD dataset.
+   propagation structures from the UPFD dataset. We have used the "gossipcop" dataset within UPFD since it
+   has a much larger corpus than "politifact".
 2. **Graph construction** — Build a heterogeneous graph where nodes
-   represent both news posts and users; edges encode retweets, replies
-   and other interactions.
+   represent both news posts and users; edges encode retweets.
 3. **Feature extraction** — Use pre-computed text embeddings
    (e.g. BERT-based features) and simple user-level features
    (e.g. degree statistics, profile features if available).
