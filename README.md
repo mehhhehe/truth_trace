@@ -48,7 +48,7 @@ folder structure.
 
 1. Go to the UPFD page on OpenDataLab: https://opendatalab.com/OpenDataLab/UPFD/tree/main/raw.
 2. Log in / create an account if needed.
-3. Download the archive(s) containing the UPFD data.  
+3. Download the archive(s) containing the UPFD data.
 
 ### 2. Create the local folder structure
 
@@ -63,8 +63,39 @@ truthtrace_full/
     gossipcop/
       raw/
         ... all GossipCop UPFD files here ...
+```
 
-'''
+## Usage
 
 ### 3. Clone the repo
-Once you have cloned the repo and installed the requirements (will almost definitely require UNIX/Linux/WSL since some of the packages are not Windows-compatible), run train.py. Once the models have trained, you can run the flask app for the (local) interface.
+
+```bash
+git clone <REPO_URL>
+cd truthtrace_full
+```
+
+### 4. Install requirements
+
+This will almost definitely require UNIX/Linux/WSL since some of the packages are not Windows-compatible.
+
+```bash
+pip install -r requirements.txt
+```
+
+### 5. Train
+
+Run `train.py` with the data directory passed as an argument via `--root`.
+
+```bash
+python train.py --root ./data
+```
+
+### 6. Run the Flask app
+
+Once the models have trained, run the Flask app for the (local) interface.
+
+```bash
+python app.py
+```
+
+Then open the URL printed in the terminal (typically `http://127.0.0.1:5000/`).
